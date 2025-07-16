@@ -3,10 +3,9 @@ import { useNavigate } from "react-router-dom";
 
 const DraggableLine = ({
   axis,
-  linePos,
+  pixelPos,
   onLineDrag,
   containerRef,
-  imgTransform,
   lineType,
 }) => {
   const [dragging, setDragging] = useState(false);
@@ -19,12 +18,8 @@ const DraggableLine = ({
   const handleMouseMove = (e) => {
     if (!dragging || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-
     const pos =
-      axis === "horizontal"
-        ? (e.clientY - rect.top - imgTransform.offsetY) / imgTransform.scale
-        : (e.clientX - rect.left - imgTransform.offsetX) / imgTransform.scale;
-
+      axis === "horizontal" ? e.clientY - rect.top : e.clientX - rect.left;
     onLineDrag(pos);
   };
 
@@ -41,11 +36,6 @@ const DraggableLine = ({
     };
   }, [dragging]);
 
-  const pos =
-    axis === "horizontal"
-      ? imgTransform.offsetY + linePos * imgTransform.scale
-      : imgTransform.offsetX + linePos * imgTransform.scale;
-
   const style = {
     position: "absolute",
     backgroundColor: lineType === "inner" ? "blue" : "red",
@@ -54,9 +44,9 @@ const DraggableLine = ({
   };
 
   if (axis === "horizontal") {
-    Object.assign(style, { top: pos, left: 0, right: 0, height: 2 });
+    Object.assign(style, { top: pixelPos, left: 0, right: 0, height: 2 });
   } else {
-    Object.assign(style, { left: pos, top: 0, bottom: 0, width: 2 });
+    Object.assign(style, { left: pixelPos, top: 0, bottom: 0, width: 2 });
   }
 
   return <div style={style} onMouseDown={handleMouseDown} />;
@@ -64,15 +54,14 @@ const DraggableLine = ({
 
 const getLineType = (key) => (key.endsWith("1") ? "outer" : "inner");
 
-// Calculate ratios left/right top/bottom from pixel lines & image size
-const calculateRatios = (lines) => {
+function calculateRatios(lines) {
+  // lines are relative (0 to 1)
   const left = lines.left2 - lines.left1;
   const right = lines.right1 - lines.right2;
   const top = lines.top2 - lines.top1;
   const bottom = lines.bottom1 - lines.bottom2;
   const horizontalTotal = left + right;
   const verticalTotal = top + bottom;
-
   return {
     horizontalRatio:
       horizontalTotal > 0
@@ -89,137 +78,67 @@ const calculateRatios = (lines) => {
           ]
         : [0, 0],
   };
-};
-
-// Convert lines from pixel values to ratios relative to image size
-const pixelsToRatios = (lines, size) => ({
-  left1: lines.left1 / size.width,
-  left2: lines.left2 / size.width,
-  right1: lines.right1 / size.width,
-  right2: lines.right2 / size.width,
-  top1: lines.top1 / size.height,
-  top2: lines.top2 / size.height,
-  bottom1: lines.bottom1 / size.height,
-  bottom2: lines.bottom2 / size.height,
-});
-
-// Convert ratios back to pixel positions for current image size
-const ratiosToPixels = (ratios, size) => ({
-  left1: ratios.left1 * size.width,
-  left2: ratios.left2 * size.width,
-  right1: ratios.right1 * size.width,
-  right2: ratios.right2 * size.width,
-  top1: ratios.top1 * size.height,
-  top2: ratios.top2 * size.height,
-  bottom1: ratios.bottom1 * size.height,
-  bottom2: ratios.bottom2 * size.height,
-});
+}
 
 export default function Centering() {
   const navigate = useNavigate();
   const containerSize = { width: 400, height: 600 };
 
-  // Create initial image state
   const createImageState = () => ({
     image: null,
-    naturalSize: { width: 0, height: 0 },
     zoom: 1,
     offset: { x: 0, y: 0 },
-    rotate: 0,
+    rotation: 0,
     dragging: false,
     startDrag: null,
+    // lines stored as relative positions (0 to 1)
     lines: {
-      left1: 0,
-      left2: 0,
-      right1: 0,
-      right2: 0,
-      top1: 0,
-      top2: 0,
-      bottom1: 0,
-      bottom2: 0,
+      top1: 0.13,
+      top2: 0.18,
+      bottom1: 0.83,
+      bottom2: 0.78,
+      left1: 0.13,
+      left2: 0.18,
+      right1: 0.88,
+      right2: 0.83,
     },
-    linesRatio: null,
   });
 
   const [front, setFront] = useState(createImageState());
   const [back, setBack] = useState(createImageState());
-
   const frontRef = useRef(null);
   const backRef = useRef(null);
+  const [frontNaturalSize, setFrontNaturalSize] = useState({ width: 0, height: 0 });
+  const [backNaturalSize, setBackNaturalSize] = useState({ width: 0, height: 0 });
 
-  // Upload handler with lines initialization and ratio management
-  const handleUpload = (e, state, setState) => {
+  const computeZoom = (naturalSize) => {
+    if (!naturalSize.width || !naturalSize.height) return 1;
+    return Math.min(
+      containerSize.width / naturalSize.width,
+      containerSize.height / naturalSize.height
+    );
+  };
+
+  const handleUpload = (e, setState, setNaturalSize) => {
     const file = e.target.files[0];
     if (file) {
       const url = URL.createObjectURL(file);
       const img = new Image();
-
       img.onload = () => {
-        setState((prev) => {
-          let newLines;
-          let newRatios;
-
-          // Check if this is first upload (lines all zero)
-          const firstUpload = Object.values(prev.lines).every((pos) => pos === 0);
-
-          if (firstUpload) {
-            // Initialize lines as sensible borders relative to image size
-            const w = img.width;
-            const h = img.height;
-            newLines = {
-              left1: w * 0.05,
-              left2: w * 0.25,
-              right1: w * 0.95,
-              right2: w * 0.75,
-              top1: h * 0.05,
-              top2: h * 0.25,
-              bottom1: h * 0.95,
-              bottom2: h * 0.75,
-            };
-            newRatios = pixelsToRatios(newLines, { width: w, height: h });
-          } else if (prev.linesRatio) {
-            // Use stored ratios to calculate lines for new image size
-            newLines = ratiosToPixels(prev.linesRatio, { width: img.width, height: img.height });
-            newRatios = prev.linesRatio;
-          } else {
-            // Fallback to same as first upload initialization
-            const w = img.width;
-            const h = img.height;
-            newLines = {
-              left1: w * 0.05,
-              left2: w * 0.25,
-              right1: w * 0.95,
-              right2: w * 0.75,
-              top1: h * 0.05,
-              top2: h * 0.25,
-              bottom1: h * 0.95,
-              bottom2: h * 0.75,
-            };
-            newRatios = pixelsToRatios(newLines, { width: w, height: h });
-          }
-
-          return {
-            ...prev,
-            image: url,
-            naturalSize: { width: img.width, height: img.height },
-            zoom: Math.min(containerSize.width / img.width, containerSize.height / img.height),
-            offset: { x: 0, y: 0 },
-            lines: newLines,
-            linesRatio: newRatios,
-          };
-        });
+        setNaturalSize({ width: img.width, height: img.height });
+        const zoom = computeZoom({ width: img.width, height: img.height });
+        const offsetX = (containerSize.width - img.width * zoom) / 2;
+        const offsetY = (containerSize.height - img.height * zoom) / 2;
+        setState((prev) => ({
+          ...prev,
+          image: url,
+          zoom,
+          offset: { x: offsetX, y: offsetY },
+          rotation: 0,
+        }));
       };
-
       img.src = url;
     }
-  };
-
-  const handleMouseDown = (e, state, setState) => {
-    setState((prev) => ({
-      ...prev,
-      dragging: true,
-      startDrag: { x: e.clientX, y: e.clientY },
-    }));
   };
 
   const handleMouseMove = (e, state, setState) => {
@@ -237,52 +156,40 @@ export default function Centering() {
     setState((prev) => ({ ...prev, dragging: false, startDrag: null }));
   };
 
-  const handleWheel = (e, state, setState) => {
+  const handleWheel = (e, setState) => {
     e.preventDefault();
     const delta = e.deltaY < 0 ? 0.05 : -0.05;
-    setState((prev) => ({ ...prev, zoom: Math.max(0.1, prev.zoom + delta) }));
-  };
-
-  const handleLineDrag = (key, newPos, state, setState) => {
-    // Clamp lines within image bounds
-    const maxX = state.naturalSize.width;
-    const maxY = state.naturalSize.height;
-
-    let clampedPos = newPos;
-    if (key.startsWith("left") || key.startsWith("right")) {
-      clampedPos = Math.min(Math.max(newPos, 0), maxX);
-    } else {
-      clampedPos = Math.min(Math.max(newPos, 0), maxY);
-    }
-
-    // Update lines and also update ratios to keep relative positions
-    const updatedLines = { ...state.lines, [key]: clampedPos };
-    const updatedRatios = pixelsToRatios(updatedLines, state.naturalSize);
-
     setState((prev) => ({
       ...prev,
-      lines: updatedLines,
-      linesRatio: updatedRatios,
+      zoom: Math.max(0.1, prev.zoom + delta),
     }));
   };
 
-  // Render single image container block
-  const renderImageBlock = (label, state, setState, ref) => {
-    const transform = {
-      scale: state.zoom,
-      offsetX: state.offset.x,
-      offsetY: state.offset.y,
-    };
+  // Converts relative line position to pixel position on screen
+  function getPixelPos(lineKey, relPos, naturalSize, zoom, offset) {
+    if (lineKey.startsWith("top") || lineKey.startsWith("bottom")) {
+      return offset.y + relPos * naturalSize.height * zoom;
+    } else if (lineKey.startsWith("left") || lineKey.startsWith("right")) {
+      return offset.x + relPos * naturalSize.width * zoom;
+    }
+    return 0;
+  }
 
+  // Converts pixel position back to relative line position (0 to 1)
+  function getRelativePos(lineKey, pixelPos, naturalSize, zoom, offset) {
+    if (lineKey.startsWith("top") || lineKey.startsWith("bottom")) {
+      return (pixelPos - offset.y) / (naturalSize.height * zoom);
+    } else if (lineKey.startsWith("left") || lineKey.startsWith("right")) {
+      return (pixelPos - offset.x) / (naturalSize.width * zoom);
+    }
+    return 0;
+  }
+
+  const renderImageBlock = (label, state, setState, ref, naturalSize) => {
     const ratios = calculateRatios(state.lines);
 
-    // Calculate displayed image width/height maintaining aspect ratio, fitting container
-    let displayedWidth = state.naturalSize.width * state.zoom;
-    let displayedHeight = state.naturalSize.height * state.zoom;
-
-    // Center image inside container (position relative to container top-left)
-    // We use offset to allow user drag
-    // Image is absolutely positioned relative to container
+    const baseWidth = naturalSize.width || containerSize.width;
+    const baseHeight = naturalSize.height || containerSize.height;
 
     return (
       <div
@@ -293,23 +200,12 @@ export default function Centering() {
           alignItems: "center",
           position: "relative",
         }}
+        key={label}
       >
-        <div style={{ fontWeight: "bold", marginBottom: 10 }}>{label}</div>
-
-        <input
-          type="range"
-          min={-15}
-          max={15}
-          step={0.01}
-          value={state.rotate}
-          onChange={(e) => setState((prev) => ({ ...prev, rotate: Number(e.target.value) }))}
-          style={{ marginBottom: 8, width: 300 }}
-        />
-        <div style={{ marginBottom: 8 }}>
-          Left/Right Border: {ratios.horizontalRatio[0]}% / {ratios.horizontalRatio[1]}%
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          Top/Bottom Border: {ratios.verticalRatio[0]}% / {ratios.verticalRatio[1]}%
+        <div style={{ fontWeight: "bold", marginBottom: 8 }}>
+          Left/Right: {ratios.horizontalRatio[0]}% / {ratios.horizontalRatio[1]}%
+          <br />
+          Top/Bottom: {ratios.verticalRatio[0]}% / {ratios.verticalRatio[1]}%
         </div>
 
         <div
@@ -322,63 +218,110 @@ export default function Centering() {
             overflow: "hidden",
             cursor: state.dragging ? "grabbing" : "grab",
             userSelect: "none",
+            backgroundColor: "#f9f9f9",
           }}
-          onWheel={(e) => handleWheel(e, state, setState)}
-          onMouseDown={(e) => handleMouseDown(e, state, setState)}
+          onWheel={(e) => handleWheel(e, setState)}
+          onMouseDown={(e) =>
+            setState((prev) => ({
+              ...prev,
+              dragging: true,
+              startDrag: { x: e.clientX, y: e.clientY },
+            }))
+          }
         >
-          {state.image ? (
+          {state.image && (
             <img
               src={state.image}
-              alt="uploaded"
+              alt="card"
               style={{
                 position: "absolute",
                 left: state.offset.x,
                 top: state.offset.y,
-                width: displayedWidth,
-                height: displayedHeight,
-                userSelect: "none",
-                transformOrigin: "center center",
-                transform: `rotate(${state.rotate}deg)`,
+                width: naturalSize.width * state.zoom,
+                height: naturalSize.height * state.zoom,
                 pointerEvents: "none",
+                transform: `rotate(${state.rotation}deg)`,
+                transformOrigin: "center center",
               }}
               draggable={false}
             />
-          ) : (
-            <div
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 0,
-                width: containerSize.width,
-                height: containerSize.height,
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                color: "#888",
-              }}
-            >
-              Upload an image
-            </div>
           )}
 
-          {Object.entries(state.lines).map(([key, pos]) => (
-            <DraggableLine
-              key={key}
-              axis={key.startsWith("left") || key.startsWith("right") ? "vertical" : "horizontal"}
-              linePos={pos}
-              onLineDrag={(newPos) => handleLineDrag(key, newPos, state, setState)}
-              containerRef={ref}
-              imgTransform={transform}
-              lineType={getLineType(key)}
-            />
-          ))}
+          {Object.entries(state.lines).map(([key, relPos]) => {
+            const pixelPos = (() => {
+              if (state.image) {
+                return getPixelPos(key, relPos, naturalSize, state.zoom, state.offset);
+              } else {
+                if (key.startsWith("top") || key.startsWith("bottom")) {
+                  return relPos * baseHeight;
+                } else if (key.startsWith("left") || key.startsWith("right")) {
+                  return relPos * baseWidth;
+                }
+                return 0;
+              }
+            })();
+
+            return (
+              <DraggableLine
+                key={key}
+                axis={key.startsWith("left") || key.startsWith("right") ? "vertical" : "horizontal"}
+                pixelPos={pixelPos}
+                onLineDrag={(newPixelPos) => {
+                  let newRelPos;
+                  if (state.image) {
+                    newRelPos = getRelativePos(key, newPixelPos, naturalSize, state.zoom, state.offset);
+                  } else {
+                    if (key.startsWith("top") || key.startsWith("bottom")) {
+                      newRelPos = newPixelPos / baseHeight;
+                    } else if (key.startsWith("left") || key.startsWith("right")) {
+                      newRelPos = newPixelPos / baseWidth;
+                    } else {
+                      newRelPos = 0;
+                    }
+                  }
+                  newRelPos = Math.min(1, Math.max(0, newRelPos));
+                  setState((prev) => ({
+                    ...prev,
+                    lines: { ...prev.lines, [key]: newRelPos },
+                  }));
+                }}
+                containerRef={ref}
+                lineType={getLineType(key)}
+              />
+            );
+          })}
         </div>
 
         <input
           type="file"
-          onChange={(e) => handleUpload(e, state, setState)}
+          onChange={(e) =>
+            label === "Front of Card"
+              ? handleUpload(e, setFront, setFrontNaturalSize)
+              : handleUpload(e, setBack, setBackNaturalSize)
+          }
           style={{ marginTop: 10 }}
+          accept="image/*"
         />
+
+        {/* Rotation slider */}
+        <div style={{ marginTop: 10, width: "100%" }}>
+          <label style={{ fontWeight: "bold" }}>Rotation: </label>
+          <input
+            type="range"
+            min={-15}
+            max={15}
+            step={0.1}
+            value={state.rotation}
+            onChange={(e) =>
+              setState((prev) => ({
+                ...prev,
+                rotation: parseFloat(e.target.value),
+              }))
+            }
+            style={{ width: "100%" }}
+          />
+          <div style={{ fontSize: "0.9em", textAlign: "center" }}>{state.rotation.toFixed(1)}°</div>
+        </div>
       </div>
     );
   };
@@ -388,7 +331,6 @@ export default function Centering() {
       alert("Please upload both front and back images before continuing.");
       return;
     }
-
     navigate("/surfacechecker", {
       state: {
         frontImage: front.image,
@@ -399,6 +341,8 @@ export default function Centering() {
         backZoom: back.zoom,
         frontOffset: front.offset,
         backOffset: back.offset,
+        frontRotation: front.rotation,
+        backRotation: back.rotation,
       },
     });
   };
@@ -415,6 +359,7 @@ export default function Centering() {
         padding: 40,
         fontFamily: "Arial",
         color: "#2e3a2f",
+        gap: 40,
       }}
       onMouseMove={(e) => {
         handleMouseMove(e, front, setFront);
@@ -429,18 +374,32 @@ export default function Centering() {
         handleMouseUp(setBack);
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        {renderImageBlock("Front of Card", front, setFront, frontRef)}
+      <div
+        style={{
+          width: 220,
+          backgroundColor: "rgba(255, 255, 255, 0.9)",
+          borderRadius: 10,
+          padding: 20,
+          fontSize: 16,
+          lineHeight: 1.4,
+          boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+          color: "#333",
+          userSelect: "none",
+          height: "fit-content",
+          fontWeight: "bold",
+        }}
+      >
+        PSA 10 - Front of Card
+        <br />
+        55/45% (Within 10%)
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        {renderImageBlock("Back of Card", back, setBack, backRef)}
-      </div>
+      {renderImageBlock("Front of Card", front, setFront, frontRef, frontNaturalSize)}
+      {renderImageBlock("Back of Card", back, setBack, backRef, backNaturalSize)}
 
       <div
         style={{
           width: 300,
-          marginLeft: 40,
           backgroundColor: "rgba(255, 255, 255, 0.9)",
           borderRadius: 10,
           padding: 20,
@@ -449,7 +408,6 @@ export default function Centering() {
           boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
           color: "#333",
           userSelect: "none",
-          alignSelf: "center",
           height: "fit-content",
         }}
       >
