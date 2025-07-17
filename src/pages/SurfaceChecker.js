@@ -1,3 +1,4 @@
+// SurfaceChecker.js
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -50,19 +51,13 @@ export default function SurfaceChecker() {
     const height = imageData.height;
     const src = imageData.data;
     const output = new Uint8ClampedArray(src);
-
-    const kernel = [
-      0, -1, 0,
-      -1, 5, -1,
-      0, -1, 0,
-    ];
+    const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
 
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         for (let c = 0; c < 3; c++) {
           let i = (y * width + x) * 4 + c;
           let sum = 0;
-
           for (let ky = -1; ky <= 1; ky++) {
             for (let kx = -1; kx <= 1; kx++) {
               let ni = ((y + ky) * width + (x + kx)) * 4 + c;
@@ -70,14 +65,13 @@ export default function SurfaceChecker() {
               sum += src[ni] * kernel[ki];
             }
           }
-
           output[i] = Math.min(255, Math.max(0, sum));
         }
       }
     }
 
     for (let i = 0; i < output.length; i += 4) {
-      output[i + 3] = src[i + 3]; // preserve alpha
+      output[i + 3] = src[i + 3];
     }
 
     imageData.data.set(output);
@@ -116,7 +110,6 @@ export default function SurfaceChecker() {
         let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         let data = imageData.data;
 
-        // Adjust contrast
         const contrast = 1.6;
         for (let i = 0; i < data.length; i += 4) {
           data[i] = (data[i] - 128) * contrast + 128;
@@ -124,13 +117,11 @@ export default function SurfaceChecker() {
           data[i + 2] = (data[i + 2] - 128) * contrast + 128;
         }
 
-        // Convert to grayscale
         for (let i = 0; i < data.length; i += 4) {
           let avg = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
           data[i] = data[i + 1] = data[i + 2] = avg;
         }
 
-        // Apply unsharp mask
         imageData = applyUnsharpMask(imageData);
         ctx.putImageData(imageData, 0, 0);
       }
@@ -215,6 +206,10 @@ export default function SurfaceChecker() {
     );
   }
 
+  const handleNext = () => {
+    navigate("/summary");
+  };
+
   return (
     <div
       style={{
@@ -257,6 +252,23 @@ export default function SurfaceChecker() {
           setBackNotes
         )}
       </div>
+
+      {/* ✅ New "Next" Button */}
+      <button
+        onClick={handleNext}
+        style={{
+          marginTop: 30,
+          padding: "12px 25px",
+          fontSize: "1rem",
+          backgroundColor: "#4caf50",
+          color: "white",
+          border: "none",
+          borderRadius: 6,
+          cursor: "pointer",
+        }}
+      >
+        Next
+      </button>
     </div>
   );
 }
