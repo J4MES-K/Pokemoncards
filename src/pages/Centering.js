@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 const DraggableLine = ({
@@ -141,7 +141,7 @@ export default function Centering() {
     }
   };
 
-  const handleMouseMove = (e, state, setState) => {
+  const handleMouseMove = useCallback((e, state, setState) => {
     if (!state.dragging || !state.startDrag) return;
     const dx = e.clientX - state.startDrag.x;
     const dy = e.clientY - state.startDrag.y;
@@ -150,7 +150,7 @@ export default function Centering() {
       offset: { x: prev.offset.x + dx, y: prev.offset.y + dy },
       startDrag: { x: e.clientX, y: e.clientY },
     }));
-  };
+  }, []);
 
   const handleMouseUp = (setState) => {
     setState((prev) => ({ ...prev, dragging: false, startDrag: null }));

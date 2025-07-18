@@ -23,7 +23,7 @@ export default function Home() {
       <p style={{ fontSize: '1.2rem', maxWidth: 500, marginBottom: '2rem' }}>
         Quickly get a pre-grade estimate for your Pokémon cards to help decide if they're ready for professional grading.
       </p>
-      <div style={{ display: 'flex', gap: '20px' }}>
+      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
         <button
           style={{
             backgroundColor: '#ffcb05',
@@ -53,6 +53,21 @@ export default function Home() {
           onClick={() => navigate('/set-collecting')}
         >
           Set Collecting
+        </button>
+        <button
+          style={{
+            backgroundColor: '#ff5959',
+            color: '#fff',
+            border: 'none',
+            padding: '15px 30px',
+            fontSize: '1.2rem',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+          }}
+          onClick={() => navigate('/portfolio')}
+        >
+          Portfolio
         </button>
       </div>
     </div>

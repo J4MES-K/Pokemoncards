@@ -1,0 +1,18 @@
+[
+  {
+    "id": "base1",
+    "name": "Base",
+    "releaseDate": "1999-01-09",
+    "images": {
+      "logo": "https://example.com/base_logo.png"
+    }
+  },
+  {
+    "id": "jungle",
+    "name": "Jungle",
+    "releaseDate": "1999-06-16",
+    "images": {
+      "logo": "https://example.com/jungle_logo.png"
+    }
+  }
+]
